@@ -1,21 +1,29 @@
 import os
 import json
 import asyncio
-from datetime import datetime, timedelta
+import traceback
+from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 from tapo import ApiClient
+from tapo.requests import EnergyDataInterval, PowerDataInterval
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 app = Flask(__name__)
+app.config["DEBUG"] = True
 
 # Configuration from environment variables
 TAPO_USERNAME = os.getenv("TAPO_USERNAME")
 TAPO_PASSWORD = os.getenv("TAPO_PASSWORD")
 TAPO_IP = os.getenv("TAPO_IP")
 
+print("Starting Tapo Control App")
+print(f"Username: {TAPO_USERNAME}")
+print(f"IP: {TAPO_IP}")
+print(f"Password: {'*' * len(TAPO_PASSWORD) if TAPO_PASSWORD else 'NOT SET'}")
+
 # Schedule storage file
-SCHEDULE_FILE = "/data/schedules.json"
+SCHEDULE_FILE = "data/schedules.json"
 
 # Global scheduler
 scheduler = BackgroundScheduler()
@@ -73,22 +81,26 @@ def load_and_schedule():
 def index():
     return render_template("index.html")
 
-
 @app.route("/api/status")
 async def get_status():
     try:
+        print(f"Connecting to Tapo device at {TAPO_IP}...")
         device = await get_device()
+        print("Getting device info...")
         info = await device.get_device_info()
-        energy = await device.get_energy_usage()
+        print("Getting energy usage...")
+        energy = await device.get_current_power()
 
-        return jsonify(
-            {
-                "success": True,
-                "is_on": info.device_on,
-                "current_power": energy.current_power / 1000,  # Convert to watts
-            }
-        )
+        result = {
+            "success": True,
+            "is_on": info.device_on,
+            "current_power": energy.current_power,  # Convert to watts
+        }
+        print(f"Status result: {result}")
+        return jsonify(result)
     except Exception as e:
+        print(f"Error in get_status: {str(e)}")
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -97,13 +109,13 @@ async def get_energy_day():
     try:
         device = await get_device()
         # Get today's energy data
-        energy_data = await device.get_energy_data(interval=0)  # 0 = hourly
+        energy_data = await device.get_energy_data(interval=EnergyDataInterval.Daily)  # 0 = hourly
 
         total = sum(energy_data.data) if energy_data.data else 0
         return jsonify(
             {
                 "success": True,
-                "energy": total / 1000,  # Convert to kWh
+                "energy": total,  # Convert to kWh
             }
         )
     except Exception as e:
@@ -116,15 +128,13 @@ async def get_energy_month():
         device = await get_device()
         # Get this month's energy data
         now = datetime.now()
-        energy_data = await device.get_energy_data(
-            interval=2, start_date=datetime(now.year, now.month, 1)
-        )  # 2 = daily
+        energy_data = await device.get_energy_data(interval=2, start_date=datetime(now.year, now.month, 1))
 
         total = sum(energy_data.data) if energy_data.data else 0
         return jsonify(
             {
                 "success": True,
-                "energy": total / 1000,  # Convert to kWh
+                "energy": total,  # Convert to kWh
             }
         )
     except Exception as e:
