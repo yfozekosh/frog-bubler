@@ -20,6 +20,30 @@
             color: #333;
             text-align: center;
         }
+        .clocks {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .clock-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+            border-left: 4px solid #ff9800;
+        }
+        .clock-label {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .clock-time {
+            color: #333;
+            font-size: 28px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
         .controls {
             display: flex;
             gap: 10px;
@@ -127,11 +151,59 @@
             background: #ffcdd2;
             color: #c62828;
         }
+        .log {
+            margin-top: 30px;
+        }
+        .log-list {
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .log-entry {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        .log-entry.on {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+        .log-entry.off {
+            background: #ffcdd2;
+            color: #c62828;
+        }
+        .btn-clear-log {
+            background: #ff9800;
+            color: white;
+            padding: 10px 20px;
+        }
+        .btn-clear-log:hover {
+            background: #e68900;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>⚡ Tapo P110 Control</h1>
+        
+        <div class="clocks">
+            <div class="clock-card">
+                <div class="clock-label">Local Time</div>
+                <div class="clock-time" id="localTime">--:--:--</div>
+            </div>
+            <div class="clock-card">
+                <div class="clock-label">Berlin Time</div>
+                <div class="clock-time" id="berlinTime">--:--:--</div>
+            </div>
+            <div class="clock-card">
+                <div class="clock-label">UTC Time</div>
+                <div class="clock-time" id="utcTime">--:--:--</div>
+            </div>
+        </div>
         
         <div id="status" class="status">Loading...</div>
         
@@ -156,7 +228,7 @@
         </div>
         
         <div class="schedules">
-            <h2>Schedules (Berlin Time)</h2>
+            <h2>Schedules (UTC Time)</h2>
             <div class="schedule-form">
                 <select id="action">
                     <option value="on">Turn On</option>
@@ -168,9 +240,64 @@
             </div>
             <div class="schedule-list" id="scheduleList"></div>
         </div>
+        
+        <div class="log">
+            <h2>Activity Log</h2>
+            <button class="btn-clear-log" onclick="clearLog()">Clear Log</button>
+            <div class="log-list" id="logList"></div>
+        </div>
     </div>
     
     <script>
+        // Log management
+        function logEvent(action) {
+            const logs = JSON.parse(localStorage.getItem('tapoLogs') || '[]');
+            const timestamp = new Date().toISOString();
+            logs.unshift({ action, timestamp });
+            // Keep only last 100 entries
+            if (logs.length > 100) logs.pop();
+            localStorage.setItem('tapoLogs', JSON.stringify(logs));
+            displayLogs();
+        }
+        
+        function displayLogs() {
+            const logs = JSON.parse(localStorage.getItem('tapoLogs') || '[]');
+            const list = document.getElementById('logList');
+            if (logs.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">No activity logged yet</div>';
+                return;
+            }
+            list.innerHTML = logs.map(log => {
+                const date = new Date(log.timestamp);
+                const localTime = date.toLocaleString();
+                return `<div class="log-entry ${log.action}">${log.action.toUpperCase()} - ${localTime}</div>`;
+            }).join('');
+        }
+        
+        function clearLog() {
+            if (confirm('Clear all log entries?')) {
+                localStorage.removeItem('tapoLogs');
+                displayLogs();
+            }
+        }
+        
+        // Clock update
+        function updateClocks() {
+            const now = new Date();
+            
+            // Local time
+            const localTime = now.toLocaleTimeString('en-GB');
+            document.getElementById('localTime').textContent = localTime;
+            
+            // Berlin time
+            const berlinTime = now.toLocaleTimeString('en-GB', { timeZone: 'Europe/Berlin' });
+            document.getElementById('berlinTime').textContent = berlinTime;
+            
+            // UTC time
+            const utcTime = now.toLocaleTimeString('en-GB', { timeZone: 'UTC' });
+            document.getElementById('utcTime').textContent = utcTime;
+        }
+        
         async function updateStatus() {
             try {
                 const resp = await fetch('/api/status');
@@ -205,11 +332,13 @@
         
         async function turnOn() {
             await fetch('/api/turn_on', { method: 'POST' });
+            logEvent('on');
             await updateStatus();
         }
         
         async function turnOff() {
             await fetch('/api/turn_off', { method: 'POST' });
+            logEvent('off');
             await updateStatus();
         }
         
@@ -256,12 +385,19 @@
         }
         
         // Initial load
+        updateClocks();
         updateStatus();
         updateEnergy();
         loadSchedules();
+        displayLogs();
         
-        // Update every 5 seconds
+        // Update clocks every 5 seconds
+        setInterval(updateClocks, 5000);
+        
+        // Update status every 5 seconds
         setInterval(updateStatus, 5000);
+        
+        // Update energy every minute
         setInterval(updateEnergy, 60000);
     </script>
 </body>
