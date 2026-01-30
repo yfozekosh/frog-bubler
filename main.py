@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import traceback
+import time
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 from tapo import ApiClient
@@ -33,6 +34,10 @@ PLUG_IPS = {
     "1": TAPO_IP_1,
     "2": TAPO_IP_2
 }
+
+# Rate limiting - track last request time per plug
+last_request_time = {"1": 0, "2": 0}
+REQUEST_COOLDOWN = 0.5  # seconds between requests to same plug
 
 # Global scheduler
 scheduler = BackgroundScheduler()
@@ -92,12 +97,34 @@ def add_activity_log(plug_id, action, source="manual", device_info=None):
     return log_entry
 
 
-async def get_device(plug_id):
-    client = ApiClient(TAPO_USERNAME, TAPO_PASSWORD)
+async def get_device(plug_id, retries=3):
+    """Get device with retry logic and rate limiting"""
     ip = PLUG_IPS.get(plug_id)
     if not ip:
         raise ValueError(f"Invalid plug_id: {plug_id}")
-    return await client.p110(ip)
+    
+    # Rate limiting
+    now = time.time()
+    time_since_last = now - last_request_time.get(plug_id, 0)
+    if time_since_last < REQUEST_COOLDOWN:
+        await asyncio.sleep(REQUEST_COOLDOWN - time_since_last)
+    
+    last_request_time[plug_id] = time.time()
+    
+    # Retry logic
+    for attempt in range(retries):
+        try:
+            client = ApiClient(TAPO_USERNAME, TAPO_PASSWORD)
+            device = await client.p110(ip)
+            return device
+        except Exception as e:
+            if attempt < retries - 1:
+                wait_time = (attempt + 1) * 1  # 1s, 2s, 3s
+                print(f"Attempt {attempt + 1} failed for plug {plug_id}: {e}. Retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                print(f"All retry attempts failed for plug {plug_id}")
+                raise
 
 
 async def turn_on_plug(plug_id, source="manual", device_info=None):
@@ -170,11 +197,8 @@ def clear_activity_log(plug_id):
 async def get_status(plug_id):
     try:
         ip = PLUG_IPS.get(plug_id)
-        print(f"Connecting to Tapo device at {ip}...")
         device = await get_device(plug_id)
-        print("Getting device info...")
         info = await device.get_device_info()
-        print("Getting energy usage...")
         energy = await device.get_current_power()
 
         result = {
@@ -182,11 +206,9 @@ async def get_status(plug_id):
             "is_on": info.device_on,
             "current_power": energy.current_power,
         }
-        print(f"Status result: {result}")
         return jsonify(result)
     except Exception as e:
-        print(f"Error in get_status: {str(e)}")
-        traceback.print_exc()
+        print(f"Error in get_status for plug {plug_id}: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -194,16 +216,17 @@ async def get_status(plug_id):
 async def get_energy_day(plug_id):
     try:
         device = await get_device(plug_id)
-        energy_data = await device.get_energy_data(interval=EnergyDataInterval.Daily)
-
-        total = sum(energy_data.data) if energy_data.data else 0
+        energy_data = await device.get_energy_data(interval=EnergyDataInterval.Hourly)
+        
+        total = sum(energy_data.data) if energy_data and energy_data.data else 0
         return jsonify(
             {
                 "success": True,
-                "energy": total,
+                "energy": total / 1000,  # Convert Wh to kWh
             }
         )
     except Exception as e:
+        print(f"Error getting daily energy for plug {plug_id}: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -212,16 +235,20 @@ async def get_energy_month(plug_id):
     try:
         device = await get_device(plug_id)
         now = datetime.now()
-        energy_data = await device.get_energy_data(interval=2, start_date=datetime(now.year, now.month, 1))
-
-        total = sum(energy_data.data) if energy_data.data else 0
+        energy_data = await device.get_energy_data(
+            interval=EnergyDataInterval.Daily,
+            start_date=datetime(now.year, now.month, 1)
+        )
+        
+        total = sum(energy_data.data) if energy_data and energy_data.data else 0
         return jsonify(
             {
                 "success": True,
-                "energy": total,
+                "energy": total / 1000,  # Convert Wh to kWh
             }
         )
     except Exception as e:
+        print(f"Error getting monthly energy for plug {plug_id}: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

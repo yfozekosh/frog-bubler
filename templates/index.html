@@ -470,11 +470,11 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Today's Usage</div>
-                    <div class="stat-value" id="dayEnergy1">-- Wh</div>
+                    <div class="stat-value" id="dayEnergy1">-- kWh</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">This Month</div>
-                    <div class="stat-value" id="monthEnergy1">-- Wh</div>
+                    <div class="stat-value" id="monthEnergy1">-- kWh</div>
                 </div>
             </div>
             
@@ -521,11 +521,11 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Today's Usage</div>
-                    <div class="stat-value" id="dayEnergy2">-- Wh</div>
+                    <div class="stat-value" id="dayEnergy2">-- kWh</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">This Month</div>
-                    <div class="stat-value" id="monthEnergy2">-- Wh</div>
+                    <div class="stat-value" id="monthEnergy2">-- kWh</div>
                 </div>
             </div>
             
@@ -662,32 +662,39 @@
         async function updateStatus(plugId) {
             try {
                 const resp = await fetch(`/api/status/${plugId}`);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
                 if (data.success) {
                     document.getElementById(`status${plugId}`).textContent = data.is_on ? 'Plug is ON' : 'Plug is OFF';
                     document.getElementById(`status${plugId}`).className = 'status ' + (data.is_on ? 'on' : 'off');
                     document.getElementById(`currentPower${plugId}`).textContent = data.current_power.toFixed(2) + ' W';
+                } else {
+                    console.error(`Status error for plug ${plugId}:`, data.error);
                 }
             } catch (e) {
-                console.error(e);
+                console.error(`Failed to update status for plug ${plugId}:`, e);
             }
         }
         
         async function updateEnergy(plugId) {
             try {
                 const dayResp = await fetch(`/api/energy/day/${plugId}`);
-                const dayData = await dayResp.json();
-                if (dayData.success) {
-                    document.getElementById(`dayEnergy${plugId}`).textContent = dayData.energy.toFixed(3) + ' kWh';
+                if (dayResp.ok) {
+                    const dayData = await dayResp.json();
+                    if (dayData.success) {
+                        document.getElementById(`dayEnergy${plugId}`).textContent = dayData.energy.toFixed(3) + ' kWh';
+                    }
                 }
                 
                 const monthResp = await fetch(`/api/energy/month/${plugId}`);
-                const monthData = await monthResp.json();
-                if (monthData.success) {
-                    document.getElementById(`monthEnergy${plugId}`).textContent = monthData.energy.toFixed(3) + ' kWh';
+                if (monthResp.ok) {
+                    const monthData = await monthResp.json();
+                    if (monthData.success) {
+                        document.getElementById(`monthEnergy${plugId}`).textContent = monthData.energy.toFixed(3) + ' kWh';
+                    }
                 }
             } catch (e) {
-                console.error(e);
+                console.error(`Failed to update energy for plug ${plugId}:`, e);
             }
         }
         
@@ -770,15 +777,15 @@
         setInterval(() => {
             updateStatus('1');
             updateStatus('2');
-        }, 5000);
+        }, 10000);  // Reduced from 5s to 10s to avoid rate limiting
         setInterval(() => {
             updateEnergy('1');
             updateEnergy('2');
-        }, 60000);
+        }, 120000);  // Reduced from 60s to 120s (2 min)
         setInterval(() => {
             displayLogs('1');
             displayLogs('2');
-        }, 10000);
+        }, 15000);  // Reduced from 10s to 15s
     </script>
 </body>
 </html>
