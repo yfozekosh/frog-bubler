@@ -5,7 +5,7 @@ import traceback
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 from tapo import ApiClient
-from tapo.requests import EnergyDataInterval, PowerDataInterval
+from tapo.requests import EnergyDataInterval
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
