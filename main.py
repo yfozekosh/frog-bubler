@@ -15,15 +15,23 @@ app.config["DEBUG"] = True
 # Configuration from environment variables
 TAPO_USERNAME = os.getenv("TAPO_USERNAME")
 TAPO_PASSWORD = os.getenv("TAPO_PASSWORD")
-TAPO_IP = os.getenv("TAPO_IP")
+TAPO_IP_1 = os.getenv("TAPO_IP_1")
+TAPO_IP_2 = os.getenv("TAPO_IP_2")
 
 print("Starting Tapo Control App")
 print(f"Username: {TAPO_USERNAME}")
-print(f"IP: {TAPO_IP}")
+print(f"IP 1: {TAPO_IP_1}")
+print(f"IP 2: {TAPO_IP_2}")
 print(f"Password: {'*' * len(TAPO_PASSWORD) if TAPO_PASSWORD else 'NOT SET'}")
 
-# Schedule storage file
+# Storage files
 SCHEDULE_FILE = "data/schedules.json"
+CONFIG_FILE = "data/config.json"
+
+PLUG_IPS = {
+    "1": TAPO_IP_1,
+    "2": TAPO_IP_2
+}
 
 # Global scheduler
 scheduler = BackgroundScheduler()
@@ -43,26 +51,42 @@ def save_schedules(schedules):
         json.dump(schedules, f)
 
 
-async def get_device():
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    return {"plug_names": {"1": "Plug 1", "2": "Plug 2"}}
+
+
+def save_config(config):
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f)
+
+
+async def get_device(plug_id):
     client = ApiClient(TAPO_USERNAME, TAPO_PASSWORD)
-    return await client.p110(TAPO_IP)
+    ip = PLUG_IPS.get(plug_id)
+    if not ip:
+        raise ValueError(f"Invalid plug_id: {plug_id}")
+    return await client.p110(ip)
 
 
-async def turn_on_plug():
-    device = await get_device()
+async def turn_on_plug(plug_id):
+    device = await get_device(plug_id)
     await device.on()
 
 
-async def turn_off_plug():
-    device = await get_device()
+async def turn_off_plug(plug_id):
+    device = await get_device(plug_id)
     await device.off()
 
 
-def schedule_job(action, hour, minute, job_id):
+def schedule_job(action, hour, minute, job_id, plug_id):
     if action == "on":
-        func = lambda: asyncio.run(turn_on_plug())
+        func = lambda: asyncio.run(turn_on_plug(plug_id))
     else:
-        func = lambda: asyncio.run(turn_off_plug())
+        func = lambda: asyncio.run(turn_off_plug(plug_id))
 
     scheduler.add_job(
         func, CronTrigger(hour=hour, minute=minute), id=job_id, replace_existing=True
@@ -73,7 +97,8 @@ def load_and_schedule():
     schedules = load_schedules()
     for schedule in schedules:
         schedule_job(
-            schedule["action"], schedule["hour"], schedule["minute"], schedule["id"]
+            schedule["action"], schedule["hour"], schedule["minute"], 
+            schedule["id"], schedule.get("plug_id", "1")
         )
 
 
@@ -81,11 +106,27 @@ def load_and_schedule():
 def index():
     return render_template("index.html")
 
-@app.route("/api/status")
-async def get_status():
+
+@app.route("/api/config", methods=["GET"])
+def get_config():
+    return jsonify(load_config())
+
+
+@app.route("/api/config", methods=["POST"])
+def update_config():
+    config = load_config()
+    data = request.json
+    if "plug_names" in data:
+        config["plug_names"] = data["plug_names"]
+    save_config(config)
+    return jsonify({"success": True, "config": config})
+
+@app.route("/api/status/<plug_id>")
+async def get_status(plug_id):
     try:
-        print(f"Connecting to Tapo device at {TAPO_IP}...")
-        device = await get_device()
+        ip = PLUG_IPS.get(plug_id)
+        print(f"Connecting to Tapo device at {ip}...")
+        device = await get_device(plug_id)
         print("Getting device info...")
         info = await device.get_device_info()
         print("Getting energy usage...")
@@ -94,7 +135,7 @@ async def get_status():
         result = {
             "success": True,
             "is_on": info.device_on,
-            "current_power": energy.current_power,  # Convert to watts
+            "current_power": energy.current_power,
         }
         print(f"Status result: {result}")
         return jsonify(result)
@@ -104,29 +145,27 @@ async def get_status():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/energy/day")
-async def get_energy_day():
+@app.route("/api/energy/day/<plug_id>")
+async def get_energy_day(plug_id):
     try:
-        device = await get_device()
-        # Get today's energy data
-        energy_data = await device.get_energy_data(interval=EnergyDataInterval.Daily)  # 0 = hourly
+        device = await get_device(plug_id)
+        energy_data = await device.get_energy_data(interval=EnergyDataInterval.Daily)
 
         total = sum(energy_data.data) if energy_data.data else 0
         return jsonify(
             {
                 "success": True,
-                "energy": total,  # Convert to kWh
+                "energy": total,
             }
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/energy/month")
-async def get_energy_month():
+@app.route("/api/energy/month/<plug_id>")
+async def get_energy_month(plug_id):
     try:
-        device = await get_device()
-        # Get this month's energy data
+        device = await get_device(plug_id)
         now = datetime.now()
         energy_data = await device.get_energy_data(interval=2, start_date=datetime(now.year, now.month, 1))
 
@@ -134,44 +173,47 @@ async def get_energy_month():
         return jsonify(
             {
                 "success": True,
-                "energy": total,  # Convert to kWh
+                "energy": total,
             }
         )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/turn_on", methods=["POST"])
-async def turn_on():
+@app.route("/api/turn_on/<plug_id>", methods=["POST"])
+async def turn_on(plug_id):
     try:
-        await turn_on_plug()
+        await turn_on_plug(plug_id)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/turn_off", methods=["POST"])
-async def turn_off():
+@app.route("/api/turn_off/<plug_id>", methods=["POST"])
+async def turn_off(plug_id):
     try:
-        await turn_off_plug()
+        await turn_off_plug(plug_id)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/schedules", methods=["GET"])
-def get_schedules():
-    return jsonify(load_schedules())
+@app.route("/api/schedules/<plug_id>", methods=["GET"])
+def get_schedules(plug_id):
+    schedules = load_schedules()
+    filtered = [s for s in schedules if s.get("plug_id", "1") == plug_id]
+    return jsonify(filtered)
 
 
-@app.route("/api/schedules", methods=["POST"])
-def add_schedule():
+@app.route("/api/schedules/<plug_id>", methods=["POST"])
+def add_schedule(plug_id):
     data = request.json
     schedules = load_schedules()
 
-    schedule_id = f"schedule_{len(schedules)}_{datetime.now().timestamp()}"
+    schedule_id = f"schedule_{plug_id}_{len(schedules)}_{datetime.now().timestamp()}"
     new_schedule = {
         "id": schedule_id,
+        "plug_id": plug_id,
         "action": data["action"],
         "hour": data["hour"],
         "minute": data["minute"],
@@ -180,13 +222,13 @@ def add_schedule():
     schedules.append(new_schedule)
     save_schedules(schedules)
 
-    schedule_job(data["action"], data["hour"], data["minute"], schedule_id)
+    schedule_job(data["action"], data["hour"], data["minute"], schedule_id, plug_id)
 
     return jsonify({"success": True, "schedule": new_schedule})
 
 
-@app.route("/api/schedules/<schedule_id>", methods=["DELETE"])
-def delete_schedule(schedule_id):
+@app.route("/api/schedules/<plug_id>/<schedule_id>", methods=["DELETE"])
+def delete_schedule(plug_id, schedule_id):
     schedules = load_schedules()
     schedules = [s for s in schedules if s["id"] != schedule_id]
     save_schedules(schedules)

@@ -337,11 +337,71 @@
                 grid-template-columns: 1fr;
             }
         }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .tab {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px 20px;
+            background: #f0f0f0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: clamp(0.875rem, 2.5vw, 1rem);
+            font-weight: 600;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .tab:hover {
+            background: #e0e0e0;
+            transform: translateY(-2px);
+        }
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        .tab-name {
+            flex: 1;
+            text-align: center;
+        }
+        .edit-icon {
+            cursor: pointer;
+            padding: 5px;
+            font-size: 1rem;
+        }
+        .edit-icon:hover {
+            opacity: 0.7;
+        }
+        .plug-content {
+            display: none;
+        }
+        .plug-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>⚡ Tapo P110 Control</h1>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('1')">
+                <span class="tab-name" id="tabName1">Plug 1</span>
+                <span class="edit-icon" onclick="event.stopPropagation(); editPlugName('1')">✏️</span>
+            </button>
+            <button class="tab" onclick="switchTab('2')">
+                <span class="tab-name" id="tabName2">Plug 2</span>
+                <span class="edit-icon" onclick="event.stopPropagation(); editPlugName('2')">✏️</span>
+            </button>
+        </div>
         
         <div class="clocks">
             <div class="clock-card">
@@ -358,63 +418,160 @@
             </div>
         </div>
         
-        <div id="status" class="status">Loading...</div>
-        
-        <div class="controls">
-            <button class="btn-on" onclick="turnOn()">Turn On</button>
-            <button class="btn-off" onclick="turnOff()">Turn Off</button>
+        <div id="plug1" class="plug-content active">
+            <div id="status1" class="status">Loading...</div>
+            
+            <div class="controls">
+                <button class="btn-on" onclick="turnOn('1')">Turn On</button>
+                <button class="btn-off" onclick="turnOff('1')">Turn Off</button>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-label">Current Power</div>
+                    <div class="stat-value" id="currentPower1">-- W</div>
+                    <div class="stat-timestamp" id="powerTimestamp1">--</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Today's Usage</div>
+                    <div class="stat-value" id="dayEnergy1">-- Wh</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">This Month</div>
+                    <div class="stat-value" id="monthEnergy1">-- Wh</div>
+                </div>
+            </div>
+            
+            <div class="schedules">
+                <h2>Schedules (UTC Time)</h2>
+                <div class="schedule-form">
+                    <select id="action1">
+                        <option value="on">Turn On</option>
+                        <option value="off">Turn Off</option>
+                    </select>
+                    <input type="number" id="hour1" min="0" max="23" placeholder="Hour (0-23)">
+                    <input type="number" id="minute1" min="0" max="59" placeholder="Minute (0-59)">
+                    <button class="btn-add" onclick="addSchedule('1')">Add Schedule</button>
+                </div>
+                <div class="schedule-list" id="scheduleList1"></div>
+            </div>
+            
+            <div class="log">
+                <h2>Activity Log</h2>
+                <button class="btn-clear-log" onclick="clearLog('1')">Clear Log</button>
+                <div class="log-list" id="logList1"></div>
+            </div>
         </div>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-label">Current Power</div>
-                <div class="stat-value" id="currentPower">-- W</div>
-                <div class="stat-timestamp" id="powerTimestamp">--</div>
+
+        <div id="plug2" class="plug-content">
+            <div id="status2" class="status">Loading...</div>
+            
+            <div class="controls">
+                <button class="btn-on" onclick="turnOn('2')">Turn On</button>
+                <button class="btn-off" onclick="turnOff('2')">Turn Off</button>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Today's Usage</div>
-                <div class="stat-value" id="dayEnergy">-- Wh</div>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-label">Current Power</div>
+                    <div class="stat-value" id="currentPower2">-- W</div>
+                    <div class="stat-timestamp" id="powerTimestamp2">--</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Today's Usage</div>
+                    <div class="stat-value" id="dayEnergy2">-- Wh</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">This Month</div>
+                    <div class="stat-value" id="monthEnergy2">-- Wh</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">This Month</div>
-                <div class="stat-value" id="monthEnergy">-- Wh</div>
+            
+            <div class="schedules">
+                <h2>Schedules (UTC Time)</h2>
+                <div class="schedule-form">
+                    <select id="action2">
+                        <option value="on">Turn On</option>
+                        <option value="off">Turn Off</option>
+                    </select>
+                    <input type="number" id="hour2" min="0" max="23" placeholder="Hour (0-23)">
+                    <input type="number" id="minute2" min="0" max="59" placeholder="Minute (0-59)">
+                    <button class="btn-add" onclick="addSchedule('2')">Add Schedule</button>
+                </div>
+                <div class="schedule-list" id="scheduleList2"></div>
             </div>
-        </div>
-        
-        <div class="schedules">
-            <h2>Schedules (UTC Time)</h2>
-            <div class="schedule-form">
-                <select id="action">
-                    <option value="on">Turn On</option>
-                    <option value="off">Turn Off</option>
-                </select>
-                <input type="number" id="hour" min="0" max="23" placeholder="Hour (0-23)">
-                <input type="number" id="minute" min="0" max="59" placeholder="Minute (0-59)">
-                <button class="btn-add" onclick="addSchedule()">Add Schedule</button>
+            
+            <div class="log">
+                <h2>Activity Log</h2>
+                <button class="btn-clear-log" onclick="clearLog('2')">Clear Log</button>
+                <div class="log-list" id="logList2"></div>
             </div>
-            <div class="schedule-list" id="scheduleList"></div>
-        </div>
-        
-        <div class="log">
-            <h2>Activity Log</h2>
-            <button class="btn-clear-log" onclick="clearLog()">Clear Log</button>
-            <div class="log-list" id="logList"></div>
         </div>
     </div>
     
     <script>
-        function logEvent(action) {
-            const logs = JSON.parse(localStorage.getItem('tapoLogs') || '[]');
+        let currentPlug = localStorage.getItem('currentPlug') || '1';
+        let plugNames = {};
+
+        async function loadConfig() {
+            try {
+                const resp = await fetch('/api/config');
+                const config = await resp.json();
+                plugNames = config.plug_names || {'1': 'Plug 1', '2': 'Plug 2'};
+                document.getElementById('tabName1').textContent = plugNames['1'];
+                document.getElementById('tabName2').textContent = plugNames['2'];
+            } catch (e) {
+                console.error('Failed to load config:', e);
+            }
+        }
+
+        async function editPlugName(plugId) {
+            const currentName = plugNames[plugId];
+            const newName = prompt(`Enter new name for ${currentName}:`, currentName);
+            if (newName && newName.trim() !== '' && newName !== currentName) {
+                plugNames[plugId] = newName.trim();
+                try {
+                    await fetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ plug_names: plugNames })
+                    });
+                    document.getElementById(`tabName${plugId}`).textContent = newName.trim();
+                } catch (e) {
+                    alert('Failed to update plug name');
+                    console.error(e);
+                }
+            }
+        }
+
+        function switchTab(plugId) {
+            currentPlug = plugId;
+            localStorage.setItem('currentPlug', plugId);
+            
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.plug-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.closest('.tab').classList.add('active');
+            document.getElementById(`plug${plugId}`).classList.add('active');
+            
+            updateStatus(plugId);
+            updateEnergy(plugId);
+            loadSchedules(plugId);
+            displayLogs(plugId);
+        }
+        
+        function logEvent(action, plugId) {
+            const logs = JSON.parse(localStorage.getItem(`tapoLogs_${plugId}`) || '[]');
             const timestamp = new Date().toISOString();
             logs.unshift({ action, timestamp });
             if (logs.length > 100) logs.pop();
-            localStorage.setItem('tapoLogs', JSON.stringify(logs));
-            displayLogs();
+            localStorage.setItem(`tapoLogs_${plugId}`, JSON.stringify(logs));
+            displayLogs(plugId);
         }
         
-        function displayLogs() {
-            const logs = JSON.parse(localStorage.getItem('tapoLogs') || '[]');
-            const list = document.getElementById('logList');
+        function displayLogs(plugId) {
+            const logs = JSON.parse(localStorage.getItem(`tapoLogs_${plugId}`) || '[]');
+            const list = document.getElementById(`logList${plugId}`);
             if (logs.length === 0) {
                 list.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">No activity logged yet</div>';
                 return;
@@ -426,10 +583,10 @@
             }).join('');
         }
         
-        function clearLog() {
+        function clearLog(plugId) {
             if (confirm('Clear all log entries?')) {
-                localStorage.removeItem('tapoLogs');
-                displayLogs();
+                localStorage.removeItem(`tapoLogs_${plugId}`);
+                displayLogs(plugId);
             }
         }
         
@@ -440,101 +597,122 @@
             document.getElementById('utcTime').textContent = now.toLocaleTimeString('en-GB', { timeZone: 'UTC' });
         }
         
-        async function updateStatus() {
+        async function updateStatus(plugId) {
             try {
-                const resp = await fetch('/api/status');
+                const resp = await fetch(`/api/status/${plugId}`);
                 const data = await resp.json();
                 if (data.success) {
-                    document.getElementById('status').textContent = data.is_on ? 'Plug is ON' : 'Plug is OFF';
-                    document.getElementById('status').className = 'status ' + (data.is_on ? 'on' : 'off');
-                    document.getElementById('currentPower').textContent = data.current_power.toFixed(2) + ' W';
+                    document.getElementById(`status${plugId}`).textContent = data.is_on ? 'Plug is ON' : 'Plug is OFF';
+                    document.getElementById(`status${plugId}`).className = 'status ' + (data.is_on ? 'on' : 'off');
+                    document.getElementById(`currentPower${plugId}`).textContent = data.current_power.toFixed(2) + ' W';
                 }
             } catch (e) {
                 console.error(e);
             }
         }
         
-        async function updateEnergy() {
+        async function updateEnergy(plugId) {
             try {
-                const dayResp = await fetch('/api/energy/day');
+                const dayResp = await fetch(`/api/energy/day/${plugId}`);
                 const dayData = await dayResp.json();
                 if (dayData.success) {
-                    document.getElementById('dayEnergy').textContent = dayData.energy.toFixed(3) + ' kWh';
+                    document.getElementById(`dayEnergy${plugId}`).textContent = dayData.energy.toFixed(3) + ' kWh';
                 }
                 
-                const monthResp = await fetch('/api/energy/month');
+                const monthResp = await fetch(`/api/energy/month/${plugId}`);
                 const monthData = await monthResp.json();
                 if (monthData.success) {
-                    document.getElementById('monthEnergy').textContent = monthData.energy.toFixed(3) + ' kWh';
+                    document.getElementById(`monthEnergy${plugId}`).textContent = monthData.energy.toFixed(3) + ' kWh';
                 }
             } catch (e) {
                 console.error(e);
             }
         }
         
-        async function turnOn() {
-            await fetch('/api/turn_on', { method: 'POST' });
-            logEvent('on');
-            await updateStatus();
+        async function turnOn(plugId) {
+            await fetch(`/api/turn_on/${plugId}`, { method: 'POST' });
+            logEvent('on', plugId);
+            await updateStatus(plugId);
         }
         
-        async function turnOff() {
-            await fetch('/api/turn_off', { method: 'POST' });
-            logEvent('off');
-            await updateStatus();
+        async function turnOff(plugId) {
+            await fetch(`/api/turn_off/${plugId}`, { method: 'POST' });
+            logEvent('off', plugId);
+            await updateStatus(plugId);
         }
         
-        async function loadSchedules() {
-            const resp = await fetch('/api/schedules');
+        async function loadSchedules(plugId) {
+            const resp = await fetch(`/api/schedules/${plugId}`);
             const schedules = await resp.json();
-            const list = document.getElementById('scheduleList');
+            const list = document.getElementById(`scheduleList${plugId}`);
             list.innerHTML = '';
             schedules.forEach(s => {
                 const div = document.createElement('div');
                 div.className = 'schedule-item';
                 div.innerHTML = `
                     <span>${s.action.toUpperCase()} at ${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}</span>
-                    <button class="btn-delete" onclick="deleteSchedule('${s.id}')">Delete</button>
+                    <button class="btn-delete" onclick="deleteSchedule('${plugId}', '${s.id}')">Delete</button>
                 `;
                 list.appendChild(div);
             });
         }
         
-        async function addSchedule() {
-            const action = document.getElementById('action').value;
-            const hour = parseInt(document.getElementById('hour').value);
-            const minute = parseInt(document.getElementById('minute').value);
+        async function addSchedule(plugId) {
+            const action = document.getElementById(`action${plugId}`).value;
+            const hour = parseInt(document.getElementById(`hour${plugId}`).value);
+            const minute = parseInt(document.getElementById(`minute${plugId}`).value);
             
             if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
                 alert('Please enter valid hour (0-23) and minute (0-59)');
                 return;
             }
             
-            await fetch('/api/schedules', {
+            await fetch(`/api/schedules/${plugId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action, hour, minute })
             });
             
-            document.getElementById('hour').value = '';
-            document.getElementById('minute').value = '';
-            await loadSchedules();
+            document.getElementById(`hour${plugId}`).value = '';
+            document.getElementById(`minute${plugId}`).value = '';
+            await loadSchedules(plugId);
         }
         
-        async function deleteSchedule(id) {
-            await fetch(`/api/schedules/${id}`, { method: 'DELETE' });
-            await loadSchedules();
+        async function deleteSchedule(plugId, id) {
+            await fetch(`/api/schedules/${plugId}/${id}`, { method: 'DELETE' });
+            await loadSchedules(plugId);
         }
         
-        updateClocks();
-        updateStatus();
-        updateEnergy();
-        loadSchedules();
-        displayLogs();
+        loadConfig().then(() => {
+            updateClocks();
+            updateStatus('1');
+            updateStatus('2');
+            updateEnergy('1');
+            updateEnergy('2');
+            loadSchedules('1');
+            loadSchedules('2');
+            displayLogs('1');
+            displayLogs('2');
+            
+            document.querySelectorAll('.tab')[parseInt(currentPlug) - 1].classList.add('active');
+            document.getElementById(`plug${currentPlug}`).classList.add('active');
+            document.querySelectorAll('.plug-content').forEach((el, idx) => {
+                if (el.id !== `plug${currentPlug}`) el.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach((el, idx) => {
+                if (idx !== parseInt(currentPlug) - 1) el.classList.remove('active');
+            });
+        });
         
         setInterval(updateClocks, 5000);
-        setInterval(updateStatus, 5000);
-        setInterval(updateEnergy, 60000);
+        setInterval(() => {
+            updateStatus('1');
+            updateStatus('2');
+        }, 5000);
+        setInterval(() => {
+            updateEnergy('1');
+            updateEnergy('2');
+        }, 60000);
     </script>
 </body>
 </html>
