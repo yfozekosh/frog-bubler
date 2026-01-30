@@ -262,6 +262,32 @@
         .log {
             margin-top: 30px;
         }
+        .log-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .log-filter {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+        }
+        .log-filter input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .log-filter label {
+            cursor: pointer;
+            font-size: clamp(0.875rem, 2vw, 1rem);
+            user-select: none;
+        }
         .log-list {
             max-height: 300px;
             overflow-y: auto;
@@ -284,6 +310,16 @@
         .log-entry.off {
             background: #ffcdd2;
             color: #c62828;
+        }
+        .log-entry.automatic {
+            opacity: 0.7;
+            font-style: italic;
+        }
+        .log-source {
+            font-size: 0.85em;
+            color: #666;
+            display: block;
+            margin-top: 3px;
         }
         .btn-clear-log {
             background: #ff9800;
@@ -458,7 +494,13 @@
             
             <div class="log">
                 <h2>Activity Log</h2>
-                <button class="btn-clear-log" onclick="clearLog('1')">Clear Log</button>
+                <div class="log-controls">
+                    <div class="log-filter">
+                        <input type="checkbox" id="hideAutomatic1" onchange="displayLogs('1')">
+                        <label for="hideAutomatic1">Hide automatic actions</label>
+                    </div>
+                    <button class="btn-clear-log" onclick="clearLog('1')">Clear Log</button>
+                </div>
                 <div class="log-list" id="logList1"></div>
             </div>
         </div>
@@ -503,7 +545,13 @@
             
             <div class="log">
                 <h2>Activity Log</h2>
-                <button class="btn-clear-log" onclick="clearLog('2')">Clear Log</button>
+                <div class="log-controls">
+                    <div class="log-filter">
+                        <input type="checkbox" id="hideAutomatic2" onchange="displayLogs('2')">
+                        <label for="hideAutomatic2">Hide automatic actions</label>
+                    </div>
+                    <button class="btn-clear-log" onclick="clearLog('2')">Clear Log</button>
+                </div>
                 <div class="log-list" id="logList2"></div>
             </div>
         </div>
@@ -560,33 +608,47 @@
             displayLogs(plugId);
         }
         
-        function logEvent(action, plugId) {
-            const logs = JSON.parse(localStorage.getItem(`tapoLogs_${plugId}`) || '[]');
-            const timestamp = new Date().toISOString();
-            logs.unshift({ action, timestamp });
-            if (logs.length > 100) logs.pop();
-            localStorage.setItem(`tapoLogs_${plugId}`, JSON.stringify(logs));
-            displayLogs(plugId);
-        }
-        
-        function displayLogs(plugId) {
-            const logs = JSON.parse(localStorage.getItem(`tapoLogs_${plugId}`) || '[]');
-            const list = document.getElementById(`logList${plugId}`);
-            if (logs.length === 0) {
-                list.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">No activity logged yet</div>';
-                return;
+        async function displayLogs(plugId) {
+            try {
+                const resp = await fetch(`/api/activity_log/${plugId}`);
+                const logs = await resp.json();
+                const list = document.getElementById(`logList${plugId}`);
+                const hideAutomatic = document.getElementById(`hideAutomatic${plugId}`).checked;
+                
+                const filteredLogs = hideAutomatic 
+                    ? logs.filter(log => log.source !== 'automatic')
+                    : logs;
+                
+                if (filteredLogs.length === 0) {
+                    list.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">No activity logged yet</div>';
+                    return;
+                }
+                
+                list.innerHTML = filteredLogs.map(log => {
+                    const date = new Date(log.timestamp);
+                    const localTime = date.toLocaleString();
+                    const sourceClass = log.source === 'automatic' ? 'automatic' : '';
+                    const sourceInfo = log.device_info ? `<span class="log-source">${log.device_info}</span>` : '';
+                    const sourceLabel = log.source === 'automatic' ? ' [AUTO]' : '';
+                    return `<div class="log-entry ${log.action} ${sourceClass}">
+                        ${log.action.toUpperCase()}${sourceLabel} - ${localTime}
+                        ${sourceInfo}
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load logs:', e);
             }
-            list.innerHTML = logs.map(log => {
-                const date = new Date(log.timestamp);
-                const localTime = date.toLocaleString();
-                return `<div class="log-entry ${log.action}">${log.action.toUpperCase()} - ${localTime}</div>`;
-            }).join('');
         }
         
-        function clearLog(plugId) {
-            if (confirm('Clear all log entries?')) {
-                localStorage.removeItem(`tapoLogs_${plugId}`);
-                displayLogs(plugId);
+        async function clearLog(plugId) {
+            if (confirm('Clear all log entries for this plug?')) {
+                try {
+                    await fetch(`/api/activity_log/${plugId}`, { method: 'DELETE' });
+                    await displayLogs(plugId);
+                } catch (e) {
+                    alert('Failed to clear log');
+                    console.error(e);
+                }
             }
         }
         
@@ -631,14 +693,14 @@
         
         async function turnOn(plugId) {
             await fetch(`/api/turn_on/${plugId}`, { method: 'POST' });
-            logEvent('on', plugId);
             await updateStatus(plugId);
+            await displayLogs(plugId);
         }
         
         async function turnOff(plugId) {
             await fetch(`/api/turn_off/${plugId}`, { method: 'POST' });
-            logEvent('off', plugId);
             await updateStatus(plugId);
+            await displayLogs(plugId);
         }
         
         async function loadSchedules(plugId) {
@@ -713,6 +775,10 @@
             updateEnergy('1');
             updateEnergy('2');
         }, 60000);
+        setInterval(() => {
+            displayLogs('1');
+            displayLogs('2');
+        }, 10000);
     </script>
 </body>
 </html>

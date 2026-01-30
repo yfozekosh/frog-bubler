@@ -27,6 +27,7 @@ print(f"Password: {'*' * len(TAPO_PASSWORD) if TAPO_PASSWORD else 'NOT SET'}")
 # Storage files
 SCHEDULE_FILE = "data/schedules.json"
 CONFIG_FILE = "data/config.json"
+ACTIVITY_LOG_FILE = "data/activity_log.json"
 
 PLUG_IPS = {
     "1": TAPO_IP_1,
@@ -64,6 +65,33 @@ def save_config(config):
         json.dump(config, f)
 
 
+def load_activity_log():
+    if os.path.exists(ACTIVITY_LOG_FILE):
+        with open(ACTIVITY_LOG_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+
+def save_activity_log(logs):
+    os.makedirs(os.path.dirname(ACTIVITY_LOG_FILE), exist_ok=True)
+    with open(ACTIVITY_LOG_FILE, "w") as f:
+        json.dump(logs, f)
+
+
+def add_activity_log(plug_id, action, source="manual", device_info=None):
+    logs = load_activity_log()
+    log_entry = {
+        "plug_id": plug_id,
+        "action": action,
+        "source": source,
+        "timestamp": datetime.now().isoformat(),
+        "device_info": device_info
+    }
+    logs.insert(0, log_entry)
+    save_activity_log(logs)
+    return log_entry
+
+
 async def get_device(plug_id):
     client = ApiClient(TAPO_USERNAME, TAPO_PASSWORD)
     ip = PLUG_IPS.get(plug_id)
@@ -72,21 +100,23 @@ async def get_device(plug_id):
     return await client.p110(ip)
 
 
-async def turn_on_plug(plug_id):
+async def turn_on_plug(plug_id, source="manual", device_info=None):
     device = await get_device(plug_id)
     await device.on()
+    add_activity_log(plug_id, "on", source, device_info)
 
 
-async def turn_off_plug(plug_id):
+async def turn_off_plug(plug_id, source="manual", device_info=None):
     device = await get_device(plug_id)
     await device.off()
+    add_activity_log(plug_id, "off", source, device_info)
 
 
 def schedule_job(action, hour, minute, job_id, plug_id):
     if action == "on":
-        func = lambda: asyncio.run(turn_on_plug(plug_id))
+        func = lambda: asyncio.run(turn_on_plug(plug_id, source="automatic", device_info=f"Schedule {hour:02d}:{minute:02d}"))
     else:
-        func = lambda: asyncio.run(turn_off_plug(plug_id))
+        func = lambda: asyncio.run(turn_off_plug(plug_id, source="automatic", device_info=f"Schedule {hour:02d}:{minute:02d}"))
 
     scheduler.add_job(
         func, CronTrigger(hour=hour, minute=minute), id=job_id, replace_existing=True
@@ -120,6 +150,21 @@ def update_config():
         config["plug_names"] = data["plug_names"]
     save_config(config)
     return jsonify({"success": True, "config": config})
+
+
+@app.route("/api/activity_log/<plug_id>", methods=["GET"])
+def get_activity_log(plug_id):
+    logs = load_activity_log()
+    filtered = [log for log in logs if log.get("plug_id") == plug_id]
+    return jsonify(filtered)
+
+
+@app.route("/api/activity_log/<plug_id>", methods=["DELETE"])
+def clear_activity_log(plug_id):
+    logs = load_activity_log()
+    logs = [log for log in logs if log.get("plug_id") != plug_id]
+    save_activity_log(logs)
+    return jsonify({"success": True})
 
 @app.route("/api/status/<plug_id>")
 async def get_status(plug_id):
@@ -183,7 +228,10 @@ async def get_energy_month(plug_id):
 @app.route("/api/turn_on/<plug_id>", methods=["POST"])
 async def turn_on(plug_id):
     try:
-        await turn_on_plug(plug_id)
+        device_info = request.headers.get('User-Agent', 'Unknown')
+        ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
+        device_info = f"{ip_addr} - {device_info[:50]}"
+        await turn_on_plug(plug_id, source="manual", device_info=device_info)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -192,7 +240,10 @@ async def turn_on(plug_id):
 @app.route("/api/turn_off/<plug_id>", methods=["POST"])
 async def turn_off(plug_id):
     try:
-        await turn_off_plug(plug_id)
+        device_info = request.headers.get('User-Agent', 'Unknown')
+        ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
+        device_info = f"{ip_addr} - {device_info[:50]}"
+        await turn_off_plug(plug_id, source="manual", device_info=device_info)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
