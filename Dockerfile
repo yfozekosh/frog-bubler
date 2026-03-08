@@ -8,10 +8,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY main.py .
+COPY app/ app/
 COPY templates/ templates/
+COPY static/ static/
 
 # Create data directory for schedules
-RUN mkdir -p /data
+RUN mkdir -p data
 
 # Expose port
 EXPOSE 5011
